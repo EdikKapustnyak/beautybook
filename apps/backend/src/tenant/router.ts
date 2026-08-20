@@ -1,0 +1,39 @@
+import { Router, type Request, type Response } from 'express';
+
+import { tenantAuthConfig } from './config.js';
+import { tenantAuthRouter } from './routes/authRoutes.js';
+import { availabilityRouter } from './routes/availabilityRoutes.js';
+import { blockedTimeRouter } from './routes/blockedTimeRoutes.js';
+import { bookingAttachmentRouter } from './routes/bookingAttachmentRoutes.js';
+import { bookingRouter } from './routes/bookingRoutes.js';
+import { companyRouter } from './routes/companyRoutes.js';
+import { customerRouter } from './routes/customerRoutes.js';
+import { employeeRouter } from './routes/employeeRoutes.js';
+import { portfolioRouter } from './routes/portfolioRoutes.js';
+import { serviceRouter } from './routes/serviceRoutes.js';
+
+export const tenantRouter: Router = Router();
+
+tenantRouter.use('/auth', tenantAuthRouter);
+tenantRouter.use('/company', companyRouter);
+tenantRouter.use('/employees', employeeRouter);
+tenantRouter.use('/services', serviceRouter);
+tenantRouter.use('/blocked-time', blockedTimeRouter);
+tenantRouter.use('/availability', availabilityRouter);
+tenantRouter.use('/bookings', bookingRouter);
+tenantRouter.use('/bookings/:bookingId/attachments', bookingAttachmentRouter);
+tenantRouter.use('/customers', customerRouter);
+tenantRouter.use('/portfolio', portfolioRouter);
+
+// Proves, at runtime, that this surface is wired to the tenant config
+// (by cookie name only — never a secret value). Feature routes (auth,
+// company, bookings, ...) are added here in later stages.
+tenantRouter.get('/status', (_req: Request, res: Response) => {
+  res.status(200).json({
+    success: true,
+    data: {
+      surface: 'tenant',
+      refreshCookieName: tenantAuthConfig.refreshCookieName,
+    },
+  });
+});
