@@ -20,6 +20,26 @@ export const publicAvailabilityLimiter = createRateLimiter({
   message: 'Too many availability requests, please try again shortly.',
 });
 
+/**
+ * Round 3 finding #4: the three public GET routes (company profile,
+ * services, employees) had NO rate limiter at all, while their sibling
+ * `/availability` did. resolveActivePublicCompany already gives an
+ * identical generic 404 for nonexistent/draft/suspended slugs
+ * (anti-enumeration by RESPONSE CONTENT works), but nothing bounded the
+ * REQUEST RATE — an attacker could brute-force thousands of slugs/second
+ * looking for active companies, or scrape a company's full public catalog
+ * at unlimited concurrency. security-measures.md §15/§30 requires exactly
+ * this kind of throttle. One shared limiter for all three: same risk
+ * profile (read-only, no side effects), unlike OTP/booking routes below
+ * which each have a distinct cost profile (SMS costs money, booking
+ * writes to the DB) and so keep their own dedicated limiters.
+ */
+export const publicCompanyLookupLimiter = createRateLimiter({
+  windowMs: 60_000,
+  max: 30,
+  message: 'Too many requests, please try again shortly.',
+});
+
 export const publicOtpRequestLimiter = createRateLimiter({
   windowMs: 60_000,
   max: 5,

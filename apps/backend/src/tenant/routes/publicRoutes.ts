@@ -41,6 +41,7 @@ import {
 } from '../controllers/publicController.js';
 import {
   publicAvailabilityLimiter,
+  publicCompanyLookupLimiter,
   publicOtpRequestLimiter,
   publicOtpVerifyLimiter,
   publicBookingLimiter,
@@ -49,9 +50,9 @@ import {
 
 export const publicRouter: Router = Router();
 
-publicRouter.get('/:slug', getPublicCompany);
-publicRouter.get('/:slug/services', getPublicServices);
-publicRouter.get('/:slug/employees', getPublicEmployees);
+publicRouter.get('/:slug', publicCompanyLookupLimiter, getPublicCompany);
+publicRouter.get('/:slug/services', publicCompanyLookupLimiter, getPublicServices);
+publicRouter.get('/:slug/employees', publicCompanyLookupLimiter, getPublicEmployees);
 publicRouter.get('/:slug/availability', publicAvailabilityLimiter, getPublicAvailability);
 
 publicRouter.post(

@@ -48,7 +48,15 @@ export const userRepository = {
   async updateByIdInCompany(
     userId: string,
     companyId: string | Types.ObjectId,
-    updates: Partial<Pick<TenantUserAttrs, 'name' | 'phone' | 'role' | 'status' | 'lastLoginAt'>>,
+    // Round 3 finding #1: `role`/`status` deliberately EXCLUDED from this
+    // type — see updateRoleOrStatusInCompany below. Previously this
+    // accepted `role`/`status` too, which compiled fine but silently
+    // skipped the tokenVersion bump (no `$inc`), meaning a future caller
+    // using the "obvious" generic update method for a role/status change
+    // would compile clean, pass tests, and quietly undo the round-2
+    // stale-role-window fix. Making the omission a compile-time error is
+    // the fix — see stale-role-window-fix follow-up notes.
+    updates: Partial<Pick<TenantUserAttrs, 'name' | 'phone' | 'lastLoginAt'>>,
   ): Promise<TenantUserDocument | null> {
     return TenantUserModel.findOneAndUpdate(
       withTenantScope(String(companyId), { _id: userId }),
