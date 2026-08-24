@@ -21,6 +21,8 @@ export interface AdminUserAttrs {
   role: AdminUserRole;
   status: AdminUserStatus;
   lastLoginAt?: Date;
+  /** Same purpose as TenantUserAttrs.tokenVersion — see user.model.ts. */
+  tokenVersion: number;
 }
 
 export type AdminUserDocument = HydratedDocument<AdminUserAttrs>;
@@ -53,6 +55,7 @@ const adminUserSchema = new Schema<AdminUserAttrs>(
       required: true,
     },
     lastLoginAt: { type: Date },
+    tokenVersion: { type: Number, required: true, default: 0 },
   },
   { timestamps: true },
 );

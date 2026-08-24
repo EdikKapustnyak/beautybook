@@ -5,6 +5,7 @@ import {
   createInMemoryCompanyRepo,
   createInMemoryResetTokenRepo,
   createInMemorySessionRepo,
+  createInMemoryTokenVersionRevocationStore,
   createInMemoryUserRepo,
 } from './inMemoryPorts.js';
 
@@ -14,6 +15,7 @@ function buildService() {
     userRepo: createInMemoryUserRepo(),
     sessionRepo: createInMemorySessionRepo(),
     resetTokenRepo: createInMemoryResetTokenRepo(),
+    tokenVersionRevocationStore: createInMemoryTokenVersionRevocationStore(),
   });
 }
 
@@ -253,5 +255,109 @@ describe('authService.forgotPassword / resetPassword', () => {
     await expect(
       service.resetPassword({ token: 'not-a-real-token', newPassword: 'whatever-new-123' }),
     ).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+  });
+});
+
+describe('authService.updateUserRoleOrStatus', () => {
+  // Self-contained construction (not the shared buildService/beforeEach
+  // above) so these tests can hold direct references to the
+  // tokenVersionRevocationStore for assertions — see
+  // stale-role-window-fix_1.md mechanisms 1 and 3.
+  function buildServiceWithStore() {
+    const store = createInMemoryTokenVersionRevocationStore();
+    const service = createAuthService({
+      companyRepo: createInMemoryCompanyRepo(),
+      userRepo: createInMemoryUserRepo(),
+      sessionRepo: createInMemorySessionRepo(),
+      resetTokenRepo: createInMemoryResetTokenRepo(),
+      tokenVersionRevocationStore: store,
+    });
+    return { service, store };
+  }
+
+  it('changes the role and returns the updated PublicUser', async () => {
+    const { service } = buildServiceWithStore();
+    const { user } = await service.registerCompanyAndOwner(validRegisterInput);
+
+    const updated = await service.updateUserRoleOrStatus({
+      userId: user.id,
+      companyId: user.companyId,
+      updates: { role: 'manager' },
+    });
+
+    expect(updated?.role).toBe('manager');
+  });
+
+  it('writes a tokenVersion revocation record so already-issued access tokens become stale', async () => {
+    const { service, store } = buildServiceWithStore();
+    const { user } = await service.registerCompanyAndOwner(validRegisterInput);
+
+    await service.updateUserRoleOrStatus({
+      userId: user.id,
+      companyId: user.companyId,
+      updates: { status: 'disabled' },
+    });
+
+    expect(store.data.get(`token-version:tenant:${user.id}`)).toBe('1');
+  });
+
+  it('revokes all existing sessions (immediate full logout — mechanism 3, a UX nicety, not the security fix itself)', async () => {
+    const { service } = buildServiceWithStore();
+    const { user, refreshToken } = await service.registerCompanyAndOwner(validRegisterInput);
+
+    await service.updateUserRoleOrStatus({
+      userId: user.id,
+      companyId: user.companyId,
+      updates: { role: 'employee' },
+    });
+
+    await expect(service.refresh({ refreshToken })).rejects.toMatchObject({
+      code: 'UNAUTHORIZED',
+    });
+  });
+
+  it('returns null for a nonexistent user rather than throwing', async () => {
+    const { service } = buildServiceWithStore();
+
+    const result = await service.updateUserRoleOrStatus({
+      userId: 'does-not-exist',
+      companyId: 'company-x',
+      updates: { role: 'employee' },
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it('a demoted user gets the NEW role on their very next refresh, without needing mechanism 3 at all', async () => {
+    // Directly verifies the claim made while reviewing
+    // stale-role-window-fix_1.md: refresh() re-signs from a freshly
+    // fetched user record, so a role downgrade is naturally reflected on
+    // the next refresh even without any explicit revocation step.
+    const store = createInMemoryTokenVersionRevocationStore();
+    const userRepo = createInMemoryUserRepo();
+    const sessionRepo = createInMemorySessionRepo();
+    const service = createAuthService({
+      companyRepo: createInMemoryCompanyRepo(),
+      userRepo,
+      sessionRepo,
+      resetTokenRepo: createInMemoryResetTokenRepo(),
+      tokenVersionRevocationStore: store,
+    });
+
+    const { user, refreshToken } = await service.registerCompanyAndOwner(validRegisterInput);
+    // Bypass updateUserRoleOrStatus's own logoutAll on purpose, to isolate
+    // refresh()'s independent behavior from mechanism 3.
+    await userRepo.updateRoleOrStatus(user.id, user.companyId, { role: 'employee' });
+
+    const { accessToken } = await service.refresh({ refreshToken });
+    const payloadSegment = accessToken.split('.')[1];
+    if (!payloadSegment) {
+      throw new Error('Malformed JWT produced in test setup.');
+    }
+    const decoded = JSON.parse(Buffer.from(payloadSegment, 'base64url').toString('utf8')) as {
+      role: string;
+    };
+
+    expect(decoded.role).toBe('employee');
   });
 });

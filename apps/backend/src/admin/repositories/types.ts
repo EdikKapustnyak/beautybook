@@ -7,6 +7,7 @@ export interface AdminUserRecord {
   name: string;
   role: AdminUserRole;
   status: AdminUserStatus;
+  tokenVersion: number;
 }
 
 export interface AdminSessionRecord {
@@ -22,6 +23,11 @@ export interface AdminUserRepositoryPort {
   findByEmail(email: string): Promise<AdminUserRecord | null>;
   findById(id: string): Promise<AdminUserRecord | null>;
   updateLastLoginAt(adminUserId: string, date: Date): Promise<void>;
+  /** Same rationale as UserRepositoryPort.updateRoleOrStatus — see there. */
+  updateRoleOrStatus(
+    adminUserId: string,
+    updates: Partial<Pick<AdminUserRecord, 'role' | 'status'>>,
+  ): Promise<AdminUserRecord | null>;
 }
 
 export interface AdminSessionRepositoryPort {

@@ -14,6 +14,7 @@ function toAdminUserRecord(doc: {
   name: string;
   role: AdminUserRecord['role'];
   status: AdminUserRecord['status'];
+  tokenVersion: number;
 }): AdminUserRecord {
   return {
     id: String(doc._id),
@@ -22,6 +23,7 @@ function toAdminUserRecord(doc: {
     name: doc.name,
     role: doc.role,
     status: doc.status,
+    tokenVersion: doc.tokenVersion,
   };
 }
 
@@ -36,6 +38,10 @@ export const mongoAdminUserRepositoryPort: AdminUserRepositoryPort = {
   },
   async updateLastLoginAt(adminUserId, date) {
     await adminUserRepository.updateLastLoginAt(adminUserId, date);
+  },
+  async updateRoleOrStatus(adminUserId, updates) {
+    const doc = await adminUserRepository.updateRoleOrStatus(adminUserId, updates);
+    return doc ? toAdminUserRecord(doc) : null;
   },
 };
 

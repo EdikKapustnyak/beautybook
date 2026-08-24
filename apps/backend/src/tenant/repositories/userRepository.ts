@@ -58,6 +58,29 @@ export const userRepository = {
   },
 
   /**
+   * Dedicated role/status update path — atomically bumps `tokenVersion`
+   * in the SAME update whenever `role` or `status` is present, so the
+   * two can never drift apart (a role/status change without a matching
+   * tokenVersion bump would silently reopen the stale-access-token
+   * window this method exists to close). See
+   * shared/security/tokenVersionRevocation.ts and
+   * stale-role-window-fix_1.md. Deliberately separate from
+   * `updateByIdInCompany` above — see the port interface's doc comment
+   * for why this isn't just folded into the generic update.
+   */
+  async updateRoleOrStatusInCompany(
+    userId: string,
+    companyId: string | Types.ObjectId,
+    updates: Partial<Pick<TenantUserAttrs, 'role' | 'status'>>,
+  ): Promise<TenantUserDocument | null> {
+    return TenantUserModel.findOneAndUpdate(
+      withTenantScope(String(companyId), { _id: userId }),
+      { $set: updates, $inc: { tokenVersion: 1 } },
+      { new: true, runValidators: true },
+    ).exec();
+  },
+
+  /**
    * NOT companyId-scoped, deliberately — used after password-reset-token
    * verification and by the authenticated "change my password" flow,
    * where the caller has already proven ownership of the account by other

@@ -22,6 +22,7 @@ export interface UserRecord {
   name: string;
   role: TenantUserRole;
   status: TenantUserStatus;
+  tokenVersion: number;
 }
 
 export interface SessionRecord {
@@ -84,6 +85,21 @@ export interface UserRepositoryPort {
   }): Promise<UserRecord>;
   updatePasswordHash(userId: string, passwordHash: string): Promise<void>;
   updateLastLoginAt(userId: string, date: Date): Promise<void>;
+  /**
+   * Deliberately a DEDICATED method, not folded into a generic profile
+   * update — same reasoning as CompanyRepositoryPort.updateById excluding
+   * `slug`/`status` (see the comment there): role/status changes are
+   * security-sensitive enough to want a single, auditable call site, and
+   * this is also where tokenVersion gets atomically incremented (see the
+   * concrete implementation in userRepository.ts). Returns the updated
+   * record (including the new tokenVersion) so the caller (authService)
+   * can write the Redis revocation record without a second read.
+   */
+  updateRoleOrStatus(
+    userId: string,
+    companyId: string,
+    updates: Partial<Pick<UserRecord, 'role' | 'status'>>,
+  ): Promise<UserRecord | null>;
 }
 
 export interface SessionRepositoryPort {

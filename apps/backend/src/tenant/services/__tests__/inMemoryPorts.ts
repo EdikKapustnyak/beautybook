@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import { createTokenVersionRevocationStore } from '../../../shared/security/tokenVersionRevocation.js';
 import type {
   CompanyRecord,
   CompanyRepositoryPort,
@@ -60,7 +61,7 @@ export function createInMemoryUserRepo(): UserRepositoryPort {
       return user && user.companyId === companyId ? user : null;
     },
     async create(data) {
-      const record: UserRecord = { id: randomUUID(), status: 'active', ...data };
+      const record: UserRecord = { id: randomUUID(), status: 'active', tokenVersion: 0, ...data };
       users.set(record.id, record);
       return record;
     },
@@ -72,6 +73,15 @@ export function createInMemoryUserRepo(): UserRepositoryPort {
     },
     async updateLastLoginAt() {
       // Not asserted on in tests; intentionally a no-op.
+    },
+    async updateRoleOrStatus(userId, companyId, updates) {
+      const user = users.get(userId);
+      if (!user || user.companyId !== companyId) {
+        return null;
+      }
+      const updated: UserRecord = { ...user, ...updates, tokenVersion: user.tokenVersion + 1 };
+      users.set(userId, updated);
+      return updated;
     },
   };
 }
@@ -128,4 +138,26 @@ export function createInMemoryResetTokenRepo(): PasswordResetTokenRepositoryPort
       return true;
     },
   };
+}
+
+/**
+ * In-memory fake for authService's tokenVersionRevocationStore dep —
+ * reuses the REAL store factory with a fake Redis client (not a
+ * hand-rolled reimplementation of the store's own compare logic), so
+ * these tests exercise the actual isRevoked/revoke behavior, just
+ * without a real Redis connection. Exposes `.data` so tests can assert
+ * on exactly what got written.
+ */
+export function createInMemoryTokenVersionRevocationStore() {
+  const data = new Map<string, string>();
+  const store = createTokenVersionRevocationStore({
+    async set(key, value) {
+      data.set(key, value);
+      return 'OK';
+    },
+    async get(key) {
+      return data.get(key) ?? null;
+    },
+  });
+  return { ...store, data };
 }

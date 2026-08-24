@@ -2,7 +2,11 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { hashPassword } from '../../../shared/security/password.js';
 import { createAdminAuthService } from '../adminAuthService.js';
-import { createInMemoryAdminSessionRepo, createInMemoryAdminUserRepo } from './inMemoryPorts.js';
+import {
+  createInMemoryAdminSessionRepo,
+  createInMemoryAdminUserRepo,
+  createInMemoryTokenVersionRevocationStore,
+} from './inMemoryPorts.js';
 
 const ADMIN_EMAIL = 'ops@beautybook.no';
 const ADMIN_PASSWORD = 'correct-horse-battery-staple';
@@ -20,6 +24,7 @@ async function buildService() {
       },
     ]),
     adminSessionRepo: createInMemoryAdminSessionRepo(),
+    tokenVersionRevocationStore: createInMemoryTokenVersionRevocationStore(),
   });
 }
 
@@ -101,5 +106,52 @@ describe('adminAuthService.logout / logoutAll', () => {
     await expect(service.refresh({ refreshToken: sessionB })).rejects.toMatchObject({
       code: 'UNAUTHORIZED',
     });
+  });
+});
+
+describe('adminAuthService.updateAdminRoleOrStatus', () => {
+  it('changes the role, writes a revocation record, and revokes existing sessions', async () => {
+    const passwordHash = await hashPassword(ADMIN_PASSWORD);
+    const store = createInMemoryTokenVersionRevocationStore();
+    const service = createAdminAuthService({
+      adminUserRepo: createInMemoryAdminUserRepo([
+        {
+          email: ADMIN_EMAIL,
+          passwordHash,
+          name: 'Ops Lead',
+          role: 'superadmin',
+          status: 'active',
+        },
+      ]),
+      adminSessionRepo: createInMemoryAdminSessionRepo(),
+      tokenVersionRevocationStore: store,
+    });
+
+    const { adminUser, refreshToken } = await service.login({
+      email: ADMIN_EMAIL,
+      password: ADMIN_PASSWORD,
+    });
+
+    const updated = await service.updateAdminRoleOrStatus({
+      adminUserId: adminUser.id,
+      updates: { role: 'support' },
+    });
+
+    expect(updated?.role).toBe('support');
+    expect(store.data.get(`token-version:admin:${adminUser.id}`)).toBe('1');
+    await expect(service.refresh({ refreshToken })).rejects.toMatchObject({
+      code: 'UNAUTHORIZED',
+    });
+  });
+
+  it('returns null for a nonexistent admin user rather than throwing', async () => {
+    const service = await buildService();
+
+    const result = await service.updateAdminRoleOrStatus({
+      adminUserId: 'does-not-exist',
+      updates: { role: 'support' },
+    });
+
+    expect(result).toBeNull();
   });
 });

@@ -28,4 +28,16 @@ export const adminUserRepository = {
   async updateLastLoginAt(adminUserId: string, date: Date): Promise<void> {
     await AdminUserModel.findByIdAndUpdate(adminUserId, { lastLoginAt: date }).exec();
   },
+
+  /** Same rationale/atomicity as userRepository.updateRoleOrStatusInCompany. */
+  async updateRoleOrStatus(
+    adminUserId: string,
+    updates: Partial<Pick<AdminUserAttrs, 'role' | 'status'>>,
+  ): Promise<AdminUserDocument | null> {
+    return AdminUserModel.findByIdAndUpdate(
+      adminUserId,
+      { $set: updates, $inc: { tokenVersion: 1 } },
+      { new: true, runValidators: true },
+    ).exec();
+  },
 };

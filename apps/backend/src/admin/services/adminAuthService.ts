@@ -6,6 +6,10 @@ import {
   hashOpaqueToken,
   signAccessToken,
 } from '../../shared/security/tokens.js';
+import {
+  adminTokenVersionKey,
+  type TokenVersionRevocationStore,
+} from '../../shared/security/tokenVersionRevocation.js';
 import type {
   AdminSessionRepositoryPort,
   AdminUserRecord,
@@ -15,6 +19,7 @@ import type {
 export interface AdminAuthServiceDeps {
   adminUserRepo: AdminUserRepositoryPort;
   adminSessionRepo: AdminSessionRepositoryPort;
+  tokenVersionRevocationStore: TokenVersionRevocationStore;
   now?: () => Date;
 }
 
@@ -39,16 +44,16 @@ const GENERIC_LOGIN_ERROR = 'Invalid email or password.';
 const GENERIC_REFRESH_ERROR = 'Invalid or expired refresh token.';
 
 export function createAdminAuthService(deps: AdminAuthServiceDeps) {
-  const { adminUserRepo, adminSessionRepo } = deps;
+  const { adminUserRepo, adminSessionRepo, tokenVersionRevocationStore } = deps;
   const now = deps.now ?? (() => new Date());
 
   function toPublicAdminUser(user: AdminUserRecord): PublicAdminUser {
     return { id: user.id, email: user.email, name: user.name, role: user.role };
   }
 
-  function signAccess(user: Pick<AdminUserRecord, 'id' | 'role'>): string {
+  function signAccess(user: Pick<AdminUserRecord, 'id' | 'role' | 'tokenVersion'>): string {
     return signAccessToken(
-      { sub: user.id, role: user.role },
+      { sub: user.id, role: user.role, tokenVersion: user.tokenVersion },
       adminAuthConfig.accessTokenSecret,
       adminAuthConfig.accessTokenTtlSeconds,
     );
@@ -153,6 +158,24 @@ export function createAdminAuthService(deps: AdminAuthServiceDeps) {
 
     async logoutAll(input: { adminUserId: string }): Promise<void> {
       await adminSessionRepo.revokeAllForAdminUser(input.adminUserId);
+    },
+
+    /** Same rationale as authService.updateUserRoleOrStatus — see there. */
+    async updateAdminRoleOrStatus(input: {
+      adminUserId: string;
+      updates: Partial<Pick<AdminUserRecord, 'role' | 'status'>>;
+    }): Promise<PublicAdminUser | null> {
+      const user = await adminUserRepo.updateRoleOrStatus(input.adminUserId, input.updates);
+      if (!user) {
+        return null;
+      }
+      await tokenVersionRevocationStore.revoke(
+        adminTokenVersionKey(user.id),
+        user.tokenVersion,
+        adminAuthConfig.accessTokenTtlSeconds,
+      );
+      await adminSessionRepo.revokeAllForAdminUser(user.id);
+      return toPublicAdminUser(user);
     },
   };
 }

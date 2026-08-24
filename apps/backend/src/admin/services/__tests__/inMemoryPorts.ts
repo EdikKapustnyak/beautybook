@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import { createTokenVersionRevocationStore } from '../../../shared/security/tokenVersionRevocation.js';
 import type {
   AdminSessionRecord,
   AdminSessionRepositoryPort,
@@ -8,12 +9,12 @@ import type {
 } from '../../repositories/types.js';
 
 export function createInMemoryAdminUserRepo(
-  seed: Omit<AdminUserRecord, 'id'>[] = [],
+  seed: Omit<AdminUserRecord, 'id' | 'tokenVersion'>[] = [],
 ): AdminUserRepositoryPort {
   const users = new Map<string, AdminUserRecord>();
   for (const user of seed) {
     const id = randomUUID();
-    users.set(id, { id, ...user });
+    users.set(id, { id, tokenVersion: 0, ...user });
   }
   return {
     async findByEmail(email) {
@@ -24,6 +25,15 @@ export function createInMemoryAdminUserRepo(
     },
     async updateLastLoginAt() {
       // Not asserted on in tests; intentionally a no-op.
+    },
+    async updateRoleOrStatus(adminUserId, updates) {
+      const user = users.get(adminUserId);
+      if (!user) {
+        return null;
+      }
+      const updated: AdminUserRecord = { ...user, ...updates, tokenVersion: user.tokenVersion + 1 };
+      users.set(adminUserId, updated);
+      return updated;
     },
   };
 }
@@ -58,4 +68,19 @@ export function createInMemoryAdminSessionRepo(): AdminSessionRepositoryPort {
       }
     },
   };
+}
+
+/** Same rationale as the tenant-side helper of the same name — see there. */
+export function createInMemoryTokenVersionRevocationStore() {
+  const data = new Map<string, string>();
+  const store = createTokenVersionRevocationStore({
+    async set(key, value) {
+      data.set(key, value);
+      return 'OK';
+    },
+    async get(key) {
+      return data.get(key) ?? null;
+    },
+  });
+  return { ...store, data };
 }

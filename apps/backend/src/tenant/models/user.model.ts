@@ -28,6 +28,19 @@ export interface TenantUserAttrs {
   role: TenantUserRole;
   status: TenantUserStatus;
   lastLoginAt?: Date;
+  /**
+   * Bumped whenever role or status changes (see
+   * tenant/repositories/userRepository.ts's updateRoleOrStatusInCompany).
+   * Embedded in every access token's payload; requireTenantAuth checks it
+   * against a Redis revocation record to close the "stale role/status in
+   * an already-issued access token" window — see
+   * shared/security/tokenVersionRevocation.ts and
+   * stale-role-window-fix_1.md. Defaults to 0 for new users; `undefined`
+   * on an access token payload (issued before this field existed) is
+   * treated as 0 by requireTenantAuth, so deploying this change does not
+   * mass-invalidate every currently-active session.
+   */
+  tokenVersion: number;
 }
 
 export type TenantUserDocument = HydratedDocument<TenantUserAttrs>;
@@ -70,6 +83,7 @@ const tenantUserSchema = new Schema<TenantUserAttrs>(
       required: true,
     },
     lastLoginAt: { type: Date },
+    tokenVersion: { type: Number, required: true, default: 0 },
   },
   { timestamps: true },
 );

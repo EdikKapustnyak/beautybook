@@ -65,6 +65,7 @@ function toUserRecord(doc: {
   name: string;
   role: UserRecord['role'];
   status: UserRecord['status'];
+  tokenVersion: number;
 }): UserRecord {
   return {
     id: String(doc._id),
@@ -74,6 +75,7 @@ function toUserRecord(doc: {
     name: doc.name,
     role: doc.role,
     status: doc.status,
+    tokenVersion: doc.tokenVersion,
   };
 }
 
@@ -101,6 +103,10 @@ export const mongoUserRepositoryPort: UserRepositoryPort = {
   },
   async updateLastLoginAt(userId, date) {
     await userRepository.updateLastLoginAt(userId, date);
+  },
+  async updateRoleOrStatus(userId, companyId, updates) {
+    const doc = await userRepository.updateRoleOrStatusInCompany(userId, companyId, updates);
+    return doc ? toUserRecord(doc) : null;
   },
 };
 

@@ -6,6 +6,10 @@ import {
   hashOpaqueToken,
   signAccessToken,
 } from '../../shared/security/tokens.js';
+import {
+  tenantTokenVersionKey,
+  type TokenVersionRevocationStore,
+} from '../../shared/security/tokenVersionRevocation.js';
 import type {
   CompanyRepositoryPort,
   PasswordResetTokenRepositoryPort,
@@ -19,6 +23,7 @@ export interface AuthServiceDeps {
   userRepo: UserRepositoryPort;
   sessionRepo: SessionRepositoryPort;
   resetTokenRepo: PasswordResetTokenRepositoryPort;
+  tokenVersionRevocationStore: TokenVersionRevocationStore;
   /** Injected for deterministic tests; defaults to `new Date()`. */
   now?: () => Date;
 }
@@ -46,7 +51,7 @@ const GENERIC_REFRESH_ERROR = 'Invalid or expired refresh token.';
 const GENERIC_RESET_ERROR = 'Invalid or expired reset token.';
 
 export function createAuthService(deps: AuthServiceDeps) {
-  const { companyRepo, userRepo, sessionRepo, resetTokenRepo } = deps;
+  const { companyRepo, userRepo, sessionRepo, resetTokenRepo, tokenVersionRevocationStore } = deps;
   const now = deps.now ?? (() => new Date());
 
   function toPublicUser(user: UserRecord): PublicUser {
@@ -59,9 +64,11 @@ export function createAuthService(deps: AuthServiceDeps) {
     };
   }
 
-  function signAccess(user: Pick<UserRecord, 'id' | 'companyId' | 'role'>): string {
+  function signAccess(
+    user: Pick<UserRecord, 'id' | 'companyId' | 'role' | 'tokenVersion'>,
+  ): string {
     return signAccessToken(
-      { sub: user.id, companyId: user.companyId, role: user.role },
+      { sub: user.id, companyId: user.companyId, role: user.role, tokenVersion: user.tokenVersion },
       tenantAuthConfig.accessTokenSecret,
       tenantAuthConfig.accessTokenTtlSeconds,
     );
@@ -227,6 +234,44 @@ export function createAuthService(deps: AuthServiceDeps) {
 
     async logoutAll(input: { userId: string }): Promise<void> {
       await sessionRepo.revokeAllForUser(input.userId);
+    },
+
+    /**
+     * Combines mechanisms 1 and 3 from stale-role-window-fix_1.md in one
+     * place, so any current or future caller (there is no dedicated
+     * team-management controller yet — this exists ahead of that
+     * endpoint being built, per the roadmap) gets both automatically
+     * instead of needing to remember two separate steps:
+     *   1. Atomically updates role/status AND bumps tokenVersion
+     *      (userRepo.updateRoleOrStatus), then writes a Redis
+     *      revocation record so already-issued access tokens with the
+     *      old tokenVersion stop being trusted within
+     *      accessTokenTtlSeconds instead of up to their full TTL.
+     *   2. Revokes all refresh-token sessions for the user — an
+     *      immediate, full forced logout. This is a UX/defense-in-depth
+     *      nicety, NOT what closes the security window (mechanism 1
+     *      does that): refresh() already re-signs access tokens with
+     *      the live role on every call, and already revokes-all when
+     *      status !== 'active', so this step's real value is making the
+     *      logout happen right now rather than lazily on the user's
+     *      next refresh attempt.
+     */
+    async updateUserRoleOrStatus(input: {
+      userId: string;
+      companyId: string;
+      updates: Partial<Pick<UserRecord, 'role' | 'status'>>;
+    }): Promise<PublicUser | null> {
+      const user = await userRepo.updateRoleOrStatus(input.userId, input.companyId, input.updates);
+      if (!user) {
+        return null;
+      }
+      await tokenVersionRevocationStore.revoke(
+        tenantTokenVersionKey(user.id),
+        user.tokenVersion,
+        tenantAuthConfig.accessTokenTtlSeconds,
+      );
+      await sessionRepo.revokeAllForUser(user.id);
+      return toPublicUser(user);
     },
 
     /**

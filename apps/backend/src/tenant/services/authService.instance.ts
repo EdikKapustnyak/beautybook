@@ -1,3 +1,4 @@
+import { tokenVersionRevocationStore } from '../../shared/security/tokenVersionRevocation.instance.js';
 import {
   mongoCompanyRepositoryPort,
   mongoPasswordResetTokenRepositoryPort,
@@ -11,4 +12,5 @@ export const authService = createAuthService({
   userRepo: mongoUserRepositoryPort,
   sessionRepo: mongoSessionRepositoryPort,
   resetTokenRepo: mongoPasswordResetTokenRepositoryPort,
+  tokenVersionRevocationStore,
 });
