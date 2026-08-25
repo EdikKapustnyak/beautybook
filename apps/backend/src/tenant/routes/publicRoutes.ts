@@ -32,6 +32,7 @@ import {
   getPublicCompany,
   getPublicServices,
   getPublicEmployees,
+  getPublicPortfolio,
   getPublicAvailability,
   requestPhoneVerification,
   confirmPhoneVerification,
@@ -53,6 +54,11 @@ export const publicRouter: Router = Router();
 publicRouter.get('/:slug', publicCompanyLookupLimiter, getPublicCompany);
 publicRouter.get('/:slug/services', publicCompanyLookupLimiter, getPublicServices);
 publicRouter.get('/:slug/employees', publicCompanyLookupLimiter, getPublicEmployees);
+// HANDOFF_2.md §4 item 6 (Landing editor stage): portfolio images were
+// already tenant-manageable (portfolioController.ts) but had no public
+// route — same rate limiter as the other read-only company-lookup
+// endpoints above.
+publicRouter.get('/:slug/portfolio', publicCompanyLookupLimiter, getPublicPortfolio);
 publicRouter.get('/:slug/availability', publicAvailabilityLimiter, getPublicAvailability);
 
 publicRouter.post(

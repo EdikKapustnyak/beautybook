@@ -1,4 +1,4 @@
-import type { BookingSettings } from '../models/company.model.js';
+import type { BookingSettings, CompanyTheme, SocialLinks } from '../models/company.model.js';
 import type { TenantUserRole, TenantUserStatus } from '../models/user.model.js';
 
 export interface CompanyRecord {
@@ -11,6 +11,8 @@ export interface CompanyRecord {
   timezone: string;
   currency: string;
   bookingSettings: BookingSettings;
+  theme: CompanyTheme;
+  socialLinks: SocialLinks;
   status: string;
 }
 
@@ -51,6 +53,8 @@ export interface CompanyProfileUpdate {
   timezone?: string;
   currency?: string;
   bookingSettings?: Partial<BookingSettings>;
+  theme?: CompanyTheme;
+  socialLinks?: Partial<SocialLinks>;
 }
 
 export interface CompanyRepositoryPort {
@@ -69,7 +73,10 @@ export interface CompanyRepositoryPort {
    */
   updateById(
     companyId: string,
-    updates: Omit<CompanyProfileUpdate, 'bookingSettings'> & { bookingSettings?: BookingSettings },
+    updates: Omit<CompanyProfileUpdate, 'bookingSettings' | 'socialLinks'> & {
+      bookingSettings?: BookingSettings;
+      socialLinks?: SocialLinks;
+    },
   ): Promise<CompanyRecord | null>;
 }
 

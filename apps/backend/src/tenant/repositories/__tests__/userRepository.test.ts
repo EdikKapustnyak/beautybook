@@ -60,3 +60,34 @@ describe('userRepository.updateByIdInCompany — round3 finding #1 regression gu
     spy.mockRestore();
   });
 });
+
+describe('userRepository.listInCompany — team-management endpoint (HANDOFF_2 §4 item 2)', () => {
+  it('paginates with skip/limit derived from page/limit and tenant-scopes the filter', async () => {
+    const execFind = vi.fn(async () => []);
+    const findSpy = vi.spyOn(TenantUserModel, 'find').mockReturnValue({
+      sort: () => ({
+        skip: (skip: number) => ({
+          limit: (limit: number) => {
+            expect(skip).toBe(20); // page 3, limit 10 -> skip 20
+            expect(limit).toBe(10);
+            return { exec: execFind };
+          },
+        }),
+      }),
+    } as unknown as ReturnType<typeof TenantUserModel.find>);
+    const countSpy = vi
+      .spyOn(TenantUserModel, 'countDocuments')
+      .mockReturnValue({ exec: async () => 25 } as ReturnType<
+        typeof TenantUserModel.countDocuments
+      >);
+
+    const result = await userRepository.listInCompany('company-1', { page: 3, limit: 10 });
+
+    expect(findSpy).toHaveBeenCalledWith(expect.objectContaining({ companyId: 'company-1' }));
+    expect(countSpy).toHaveBeenCalledWith(expect.objectContaining({ companyId: 'company-1' }));
+    expect(result).toEqual({ items: [], total: 25 });
+
+    findSpy.mockRestore();
+    countSpy.mockRestore();
+  });
+});

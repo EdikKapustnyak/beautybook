@@ -39,6 +39,16 @@ export interface PublicUser {
   email: string;
   name: string;
   role: UserRecord['role'];
+  /**
+   * Added for the team-management endpoint (teamController.ts), which
+   * needs to show callers whether a teammate is active/invited/disabled —
+   * previously omitted here since nothing consumed it. Not sensitive
+   * (unlike passwordHash), so including it on every PublicUser (register/
+   * login/me/updateUserRoleOrStatus responses alike) is safe and keeps
+   * this the single conversion function for the whole service, per its
+   * own "one sanctioned place" convention.
+   */
+  status: UserRecord['status'];
 }
 
 export interface RequestContext {
@@ -61,6 +71,7 @@ export function createAuthService(deps: AuthServiceDeps) {
       email: user.email,
       name: user.name,
       role: user.role,
+      status: user.status,
     };
   }
 

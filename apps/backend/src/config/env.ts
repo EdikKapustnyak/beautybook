@@ -22,7 +22,9 @@ const envSchema = z.object({
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
 
-  PUBLIC_BOOKING_TOKEN_SECRET: z.string().min(32, 'PUBLIC_BOOKING_TOKEN_SECRET must be at least 32 characters'),
+  PUBLIC_BOOKING_TOKEN_SECRET: z
+    .string()
+    .min(32, 'PUBLIC_BOOKING_TOKEN_SECRET must be at least 32 characters'),
 
   // Platform admin auth — separate secrets/session store from tenant auth.
   ADMIN_JWT_ACCESS_SECRET: z
@@ -84,6 +86,19 @@ const envSchema = z.object({
     .default(5 * 60),
   OTP_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
   OTP_RESEND_COOLDOWN_SECONDS: z.coerce.number().int().positive().default(60),
+
+  // Base URL of the public-facing site (landing pages + booking-management
+  // links sent in SMS confirmations — see tenant/controllers/
+  // publicController.ts's publicBookingManagementUrl). No trailing slash.
+  // Defaults to the production domain from project-overview.md §3
+  // (`beautybook.no/{company-slug}`) so nothing needs to change for a
+  // default production deploy; override for staging/local environments.
+  // NOTE: the exact frontend route shape appended to this base
+  // (`/manage-booking/:token`) is still a placeholder pending the real
+  // frontend route — see publicController.ts's header comment. This env
+  // var only closes HANDOFF_2.md §4 item 3 (hardcoded domain -> env var);
+  // it does not resolve that separate, still-open placeholder.
+  PUBLIC_SITE_BASE_URL: z.string().url().default('https://beautybook.no'),
 
   // Object storage — S3-compatible (works with AWS S3 or MinIO/DigitalOcean
   // Spaces/Cloudflare R2/etc. via S3_ENDPOINT + S3_FORCE_PATH_STYLE). See

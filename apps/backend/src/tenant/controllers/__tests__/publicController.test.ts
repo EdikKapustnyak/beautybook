@@ -55,6 +55,9 @@ vi.mock('../../repositories/bookingRepository.js', () => ({
 vi.mock('../../repositories/customerRepository.js', () => ({
   customerRepository: { findByIdInCompany: vi.fn() },
 }));
+vi.mock('../../repositories/portfolioImageRepository.js', () => ({
+  portfolioImageRepository: { listInCompany: vi.fn() },
+}));
 vi.mock('../../services/availabilityEngine.js', () => ({
   getDayBoundsUtc: vi.fn(() => ({ start: new Date('2026-01-01'), end: new Date('2026-01-02') })),
   isSlotAvailable: vi.fn(() => true),
@@ -83,12 +86,18 @@ import { companyRepository } from '../../repositories/companyRepository.js';
 import { employeeRepository } from '../../repositories/employeeRepository.js';
 import { serviceRepository } from '../../repositories/serviceRepository.js';
 import { bookingRepository } from '../../repositories/bookingRepository.js';
+import { portfolioImageRepository } from '../../repositories/portfolioImageRepository.js';
 import { bookingService } from '../../services/bookingService.instance.js';
 import {
   issuePhoneVerificationToken,
   issueBookingManagementToken,
 } from '../../../shared/security/publicBookingTokens.js';
-import { getPublicCompany, cancelPublicBooking, createPublicBooking } from '../publicController.js';
+import {
+  getPublicCompany,
+  getPublicPortfolio,
+  cancelPublicBooking,
+  createPublicBooking,
+} from '../publicController.js';
 
 function buildReq(overrides: Partial<Request> = {}): Request {
   return { headers: {}, params: {}, query: {}, body: {}, ...overrides } as Request;
@@ -302,5 +311,50 @@ describe('createPublicBooking never trusts req.body.phone', () => {
       expect((result.error as Error).message).toMatch(/invalid or expired/i);
     }
     expect(bookingService.createBooking).not.toHaveBeenCalled();
+  });
+});
+
+describe('getPublicPortfolio — HANDOFF_2.md §4 item 6 (Landing editor)', () => {
+  beforeEach(() => {
+    vi.mocked(companyRepository.findBySlug).mockResolvedValue(
+      ACTIVE_COMPANY as unknown as CompanyFixture,
+    );
+  });
+
+  it('returns the mapped, active-only portfolio images for an active company', async () => {
+    vi.mocked(portfolioImageRepository.listInCompany).mockResolvedValue([
+      { _id: 'img-1', url: 'https://cdn.example.com/1.jpg', order: 0 },
+      { _id: 'img-2', url: 'https://cdn.example.com/2.jpg', order: 1 },
+    ] as unknown as Awaited<ReturnType<typeof portfolioImageRepository.listInCompany>>);
+
+    const result = await invokeHandler(
+      getPublicPortfolio,
+      buildReq({ params: { slug: 'test-salon' } }),
+    );
+
+    expect('error' in result).toBe(false);
+    if (!('error' in result)) {
+      expect(result.body).toEqual({
+        success: true,
+        data: {
+          images: [
+            { id: 'img-1', url: 'https://cdn.example.com/1.jpg', order: 0 },
+            { id: 'img-2', url: 'https://cdn.example.com/2.jpg', order: 1 },
+          ],
+        },
+      });
+    }
+    expect(portfolioImageRepository.listInCompany).toHaveBeenCalledWith('company-1', {
+      activeOnly: true,
+    });
+  });
+
+  it('errors for a nonexistent/draft/suspended slug, same as the other public lookups (anti-enumeration)', async () => {
+    vi.mocked(companyRepository.findBySlug).mockResolvedValueOnce(null);
+
+    const result = await invokeHandler(getPublicPortfolio, buildReq({ params: { slug: 'ghost' } }));
+
+    expect('error' in result).toBe(true);
+    expect(portfolioImageRepository.listInCompany).not.toHaveBeenCalled();
   });
 });

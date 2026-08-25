@@ -76,4 +76,29 @@ describe('CompanyModel validation', () => {
     const company = buildValidCompany({ status: 'deleted-forever' });
     expect(company.validateSync()?.errors.status).toBeDefined();
   });
+
+  it('defaults theme to "classic" and socialLinks to an empty object', () => {
+    const company = buildValidCompany();
+    expect(company.theme).toBe('classic');
+    expect(company.socialLinks).toMatchObject({});
+  });
+
+  it('accepts each valid theme value', () => {
+    for (const theme of ['classic', 'modern', 'minimal']) {
+      const company = buildValidCompany({ theme });
+      expect(company.validateSync(), `theme "${theme}" should be accepted`).toBeUndefined();
+    }
+  });
+
+  it('rejects an invalid theme enum value', () => {
+    const company = buildValidCompany({ theme: 'wix-clone' });
+    expect(company.validateSync()?.errors.theme).toBeDefined();
+  });
+
+  it('accepts a partial socialLinks object', () => {
+    const company = buildValidCompany({ socialLinks: { instagram: 'https://instagram.com/x' } });
+    expect(company.validateSync()).toBeUndefined();
+    expect(company.socialLinks.instagram).toBe('https://instagram.com/x');
+    expect(company.socialLinks.facebook).toBeUndefined();
+  });
 });

@@ -361,21 +361,15 @@ describe('authService.updateUserRoleOrStatus', () => {
     expect(decoded.role).toBe('employee');
   });
 
-  // Round 3 finding #2: authService.updateUserRoleOrStatus exists and is
-  // fully covered above, but NO controller/route in the codebase calls it
-  // — there is currently no team-management endpoint at all
-  // (employeeController.ts manages the Employee roster model, which has
-  // no role/status fields; TenantUser accounts have no HTTP-reachable way
-  // to change role/status yet). This is intentionally NOT a bug — the
-  // mechanism is built ahead of the endpoint that will need it, per the
-  // roadmap. `it.todo` here is a deliberate, visible marker so this stays
-  // a known, tracked gap rather than something that quietly looks
-  // "finished" because the surrounding tests are green. When the
-  // team-management endpoint is built, this should become a real
-  // integration test: valid token -> updateUserRoleOrStatus via a real
-  // HTTP request -> replay the old token -> must be rejected (not just a
-  // unit test calling authService directly, the way the tests above do).
-  it.todo(
-    'team-management endpoint must call authService.updateUserRoleOrStatus, not a generic update — see round3-findings-and-fixes.md #2',
-  );
+  // Round 3 finding #2 is CLOSED (HANDOFF_2.md §4 item 2): a
+  // team-management endpoint now exists —
+  // tenant/controllers/teamController.ts, PATCH /api/tenant/team/:id —
+  // and it calls authService.updateUserRoleOrStatus (never a generic
+  // update). The real, HTTP-level integration test this `it.todo` asked
+  // for ("valid token -> updateUserRoleOrStatus via a real HTTP request
+  // -> replay the old token -> must be rejected") now lives in
+  // tenant/routes/__tests__/teamRoutes.http.test.ts, against a real
+  // createApp() with only the Mongoose-touching repositories faked — see
+  // that file's header for why an HTTP-level test, not another unit test
+  // calling authService directly, was the right way to close this.
 });

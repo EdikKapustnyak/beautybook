@@ -37,6 +37,13 @@
 //     from bookingController.ts.
 //   - messageTemplates.cancellationMessage's exact signature: confirmed
 //     directly — matches what was already used here.
+//   - messageTemplates.publicBookingConfirmationMessage: added this
+//     session (HANDOFF_2.md §4 item 5) — composes on top of the existing
+//     bookingConfirmationMessage (same base wording, DRY) plus the
+//     management-link param. Replaces the confirmation SMS body that used
+//     to be built inline here with a raw UTC ISO timestamp instead of the
+//     company's local time — see the git history of this file for the
+//     prior version if needed.
 //   - customerRepository.findByIdInCompany(customerId, companyId) — used
 //     exactly this way in bookingController.ts's cancellation-notification
 //     branch.
@@ -56,18 +63,21 @@
 //     session produced is unnecessary and has been removed.
 //
 // ⚠️ STILL UNCONFIRMED (narrow, cosmetic-only):
-//   - The public booking-management LINK's URL shape
+//   - The public booking-management LINK's URL *path shape*
 //     (`publicBookingManagementUrl` below) — project-overview.md §3 only
 //     confirms the public site's base pattern
 //     (`beautybook.no/{company-slug}`), not the frontend's actual
-//     booking-management route once built. Treat the composed URL as a
-//     placeholder to align with the real frontend route when it exists;
-//     ideally the domain comes from an env var, not a hardcoded string —
-//     flagged at its one usage site below.
+//     booking-management route once built. Treat the composed path
+//     (`/manage-booking/:token`) as a placeholder to align with the real
+//     frontend route when it exists. The base DOMAIN itself is no longer
+//     hardcoded — it now comes from env.PUBLIC_SITE_BASE_URL
+//     (HANDOFF_2.md §4 item 3, closed); only the path segment remains a
+//     placeholder, flagged at its one usage site below.
 // ============================================================================
 
 import { DateTime } from 'luxon';
 
+import { env } from '../../config/env.js';
 import type { WeeklySchedule } from '../../shared/validation/workingHours.js';
 import { NotFoundError, ValidationError } from '../../shared/errors/AppError.js';
 import { asyncHandler } from '../../shared/http/asyncHandler.js';
@@ -80,6 +90,7 @@ import { blockedTimeRepository } from '../repositories/blockedTimeRepository.js'
 import { bookingRepository } from '../repositories/bookingRepository.js';
 import { customerRepository } from '../repositories/customerRepository.js';
 import { employeeRepository } from '../repositories/employeeRepository.js';
+import { portfolioImageRepository } from '../repositories/portfolioImageRepository.js';
 import { serviceRepository } from '../repositories/serviceRepository.js';
 import {
   getDayBoundsUtc,
@@ -91,7 +102,10 @@ import { bookingService } from '../services/bookingService.instance.js';
 // ASSUMPTION: mirrors the confirmed bookingService.instance.js /
 // notificationService.instance.js convention — see header comment.
 import { otpService } from '../services/otpService.instance.js';
-import { cancellationMessage } from '../services/messageTemplates.js';
+import {
+  cancellationMessage,
+  publicBookingConfirmationMessage,
+} from '../services/messageTemplates.js';
 import { notificationService } from '../services/notificationService.instance.js';
 
 import {
@@ -104,6 +118,7 @@ import {
   toPublicCompanyDto,
   toPublicServiceDto,
   toPublicEmployeeDto,
+  toPublicPortfolioImageDto,
 } from '../../shared/dto/publicDto.js';
 import {
   slugParamSchema,
@@ -266,14 +281,13 @@ async function enqueuePublicBookingNotification(input: {
 }
 
 /**
- * ASSUMPTION: placeholder URL shape for the "manage your booking" link —
- * see header comment. Ideally the base domain comes from an env var
- * (e.g. PUBLIC_SITE_BASE_URL) rather than being hardcoded; using
- * project-overview.md §3's stated pattern here as a stand-in until the
- * real frontend route exists.
+ * Base domain confirmed via env.PUBLIC_SITE_BASE_URL — closes
+ * HANDOFF_2.md §4 item 3 (was hardcoded to 'https://beautybook.no').
+ * The path shape appended below (`/manage-booking/:token`) remains a
+ * placeholder — see header comment — pending the real frontend route.
  */
-function publicBookingManagementUrl(companySlug: string, managementToken: string): string {
-  return `https://beautybook.no/${companySlug}/manage-booking/${managementToken}`;
+export function publicBookingManagementUrl(companySlug: string, managementToken: string): string {
+  return `${env.PUBLIC_SITE_BASE_URL}/${companySlug}/manage-booking/${managementToken}`;
 }
 
 export const getPublicCompany = asyncHandler(async (req, res) => {
@@ -311,6 +325,28 @@ export const getPublicEmployees = asyncHandler(async (req, res) => {
   res.status(200).json({
     success: true,
     data: { employees: employees.items.map(toPublicEmployeeDto) },
+  });
+});
+
+/**
+ * Landing editor stage (dev-tasks.md §18/§19, HANDOFF_2.md §4 item 6).
+ * portfolioImageRepository.listInCompany already supports an
+ * `activeOnly` filter (portfolioImageRepository.ts) and sorts by
+ * `{ order: 1, createdAt: 1 }` at the query level — no client-side
+ * sort/filter needed here, matching getPublicServices/getPublicEmployees
+ * above. No pagination: MVP-scale portfolios are small, and
+ * project-overview.md §11 describes a handful of curated images, not an
+ * unbounded gallery — revisit if that assumption changes.
+ */
+export const getPublicPortfolio = asyncHandler(async (req, res) => {
+  const { slug } = parseOrThrow(slugParamSchema, req.params);
+  const company = await resolveActivePublicCompany(slug);
+  const images = await portfolioImageRepository.listInCompany(String(company._id), {
+    activeOnly: true,
+  });
+  res.status(200).json({
+    success: true,
+    data: { images: images.map(toPublicPortfolioImageDto) },
   });
 });
 
@@ -451,13 +487,13 @@ export const createPublicBooking = asyncHandler(async (req, res) => {
     bookingId: booking.id,
     type: 'booking_confirmation',
     recipient: phone,
-    // ASSUMPTION: composed locally rather than via messageTemplates.ts's
-    // bookingConfirmationMessage (which doesn't take a link param) —
-    // consider moving this into messageTemplates.ts as a dedicated
-    // `publicBookingConfirmationMessage` once the real frontend
-    // management-link URL shape is settled, for consistency with the
-    // tenant flow's message-building convention.
-    body: `Your booking at ${company.name} for ${service.name} is confirmed for ${booking.startAt.toISOString()}. Manage it here: ${publicBookingManagementUrl(company.slug, bookingManagementToken)}`,
+    body: publicBookingConfirmationMessage({
+      companyName: company.name,
+      serviceName: service.name,
+      startAt: booking.startAt,
+      timezone: company.timezone,
+      managementUrl: publicBookingManagementUrl(company.slug, bookingManagementToken),
+    }),
   });
 
   res.status(201).json({

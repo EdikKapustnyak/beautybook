@@ -39,6 +39,24 @@ const bookingSettingsSchema = z
   })
   .partial();
 
+// Fixed enum, not free-form theme/CSS input — see company.model.ts's
+// COMPANY_THEMES comment (project-overview.md §4: a small set of
+// pre-built templates, not a full page builder).
+const themeSchema = z.enum(['classic', 'modern', 'minimal']);
+
+// Fixed allowlist of named platforms (not free-form key/value pairs),
+// each safe-URL validated — security-measures.md §8/§9 (URL scheme
+// allowlist; javascript:/data:/vbscript: rejected via isSafeUrl).
+const socialLinksSchema = z
+  .object({
+    instagram: safeUrlSchema,
+    facebook: safeUrlSchema,
+    tiktok: safeUrlSchema,
+    website: safeUrlSchema,
+  })
+  .partial()
+  .strict();
+
 // .strict() is the key defense here: any field NOT listed below (slug,
 // status, subscriptionId, _id, companyId, ...) is rejected outright rather
 // than silently ignored. Combined with the explicit field allowlist the
@@ -54,6 +72,8 @@ export const updateCompanySchema = z
     timezone: timezoneSchema.optional(),
     currency: currencySchema.optional(),
     bookingSettings: bookingSettingsSchema.optional(),
+    theme: themeSchema.optional(),
+    socialLinks: socialLinksSchema.optional(),
   })
   .strict()
   .refine((data) => Object.keys(data).length > 0, {

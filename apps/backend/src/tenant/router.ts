@@ -12,6 +12,7 @@ import { employeeRouter } from './routes/employeeRoutes.js';
 import { portfolioRouter } from './routes/portfolioRoutes.js';
 import { publicRouter } from './routes/publicRoutes.js';
 import { serviceRouter } from './routes/serviceRoutes.js';
+import { teamRouter } from './routes/teamRoutes.js';
 
 export const tenantRouter: Router = Router();
 
@@ -25,6 +26,11 @@ tenantRouter.use('/bookings', bookingRouter);
 tenantRouter.use('/bookings/:bookingId/attachments', bookingAttachmentRouter);
 tenantRouter.use('/customers', customerRouter);
 tenantRouter.use('/portfolio', portfolioRouter);
+// TenantUser (login account) role/status management — see
+// tenant/controllers/teamController.ts for scope notes. Deliberately
+// separate from '/employees' (the Employee roster model) — see the
+// "Employee vs. TenantUser" distinction in README.md's Stage 5/7 section.
+tenantRouter.use('/team', teamRouter);
 // Public, unauthenticated surface (technical-spec.md §7) — landing page,
 // services/employees/availability, phone verification, and the public
 // booking flow. Mounted here (not as a separate app.ts entry) so it

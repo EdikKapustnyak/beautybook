@@ -27,6 +27,8 @@ export function createInMemoryCompanyRepo(): CompanyRepositoryPort {
         id: randomUUID(),
         status: 'draft',
         bookingSettings: DEFAULT_BOOKING_SETTINGS,
+        theme: 'classic',
+        socialLinks: {},
         ...data,
       };
       companies.set(record.id, record);

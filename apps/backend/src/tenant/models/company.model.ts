@@ -11,6 +11,27 @@ const CURRENCY_PATTERN = /^[A-Z]{3}$/;
 
 export type CompanyStatus = 'draft' | 'active' | 'suspended';
 
+/**
+ * Small, fixed set of pre-built templates — project-overview.md §4: "Для
+ * MVP не нужен полноценный Wix. Достаточно нескольких заранее
+ * разработанных красивых шаблонов." Never free-form theme/CSS input.
+ */
+export const COMPANY_THEMES = ['classic', 'modern', 'minimal'] as const;
+export type CompanyTheme = (typeof COMPANY_THEMES)[number];
+
+/**
+ * Fixed allowlist of named platforms, not free-form key/value pairs —
+ * same MVP-scope reasoning as COMPANY_THEMES above, and keeps validation
+ * simple (each key gets the same safe-URL check, security-measures.md
+ * §8). `website` covers any link that isn't one of the specific socials.
+ */
+export interface SocialLinks {
+  instagram?: string;
+  facebook?: string;
+  tiktok?: string;
+  website?: string;
+}
+
 export interface BookingSettings {
   allowOnlineCancel: boolean;
   allowOnlineReschedule: boolean;
@@ -27,6 +48,8 @@ export interface CompanyAttrs {
   timezone: string;
   currency: string;
   bookingSettings: BookingSettings;
+  theme: CompanyTheme;
+  socialLinks: SocialLinks;
   subscriptionId?: string;
   status: CompanyStatus;
 }
@@ -39,6 +62,16 @@ const bookingSettingsSchema = new Schema<BookingSettings>(
     allowOnlineReschedule: { type: Boolean, default: true },
     minNoticeMinutes: { type: Number, default: 60, min: 0, max: 60 * 24 * 30 },
     maxAdvanceBookingDays: { type: Number, default: 60, min: 1, max: 365 },
+  },
+  { _id: false },
+);
+
+const socialLinksSchema = new Schema<SocialLinks>(
+  {
+    instagram: { type: String, trim: true, maxlength: 2048 },
+    facebook: { type: String, trim: true, maxlength: 2048 },
+    tiktok: { type: String, trim: true, maxlength: 2048 },
+    website: { type: String, trim: true, maxlength: 2048 },
   },
   { _id: false },
 );
@@ -88,6 +121,13 @@ const companySchema = new Schema<CompanyAttrs>(
       },
     },
     bookingSettings: { type: bookingSettingsSchema, default: () => ({}) },
+    theme: {
+      type: String,
+      enum: COMPANY_THEMES,
+      default: 'classic',
+      required: true,
+    },
+    socialLinks: { type: socialLinksSchema, default: () => ({}) },
     subscriptionId: { type: String, trim: true },
     status: {
       type: String,

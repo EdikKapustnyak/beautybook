@@ -13,6 +13,11 @@ export type CreateTenantUserInput = Pick<
 > &
   Partial<Pick<TenantUserAttrs, 'phone' | 'status'>>;
 
+export interface ListTeamMembersOptions {
+  page: number;
+  limit: number;
+}
+
 export const userRepository = {
   /**
    * The ONLY method in this repository that is not companyId-scoped.
@@ -36,6 +41,30 @@ export const userRepository = {
 
   async listByCompany(companyId: string | Types.ObjectId): Promise<TenantUserDocument[]> {
     return TenantUserModel.find(withTenantScope(String(companyId), {})).exec();
+  },
+
+  /**
+   * Paginated variant of listByCompany — the team-management endpoint
+   * (tenant/controllers/teamController.ts) uses this one, not the
+   * unbounded version above, per dev-tasks.md §31 ("Paginate all large
+   * lists. Avoid unbounded Mongo queries."). `passwordHash` is excluded
+   * automatically by the schema's `select: false` — no explicit
+   * `.select()` needed here, matching every other query against this
+   * model in this file.
+   */
+  async listInCompany(
+    companyId: string | Types.ObjectId,
+    options: ListTeamMembersOptions,
+  ): Promise<{ items: TenantUserDocument[]; total: number }> {
+    const filter = withTenantScope(String(companyId), {});
+    const skip = (options.page - 1) * options.limit;
+
+    const [items, total] = await Promise.all([
+      TenantUserModel.find(filter).sort({ createdAt: -1 }).skip(skip).limit(options.limit).exec(),
+      TenantUserModel.countDocuments(filter).exec(),
+    ]);
+
+    return { items, total };
   },
 
   async createInCompany(

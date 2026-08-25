@@ -23,6 +23,8 @@ function toCompanyRecord(doc: {
   timezone: string;
   currency: string;
   bookingSettings: CompanyRecord['bookingSettings'];
+  theme: CompanyRecord['theme'];
+  socialLinks: CompanyRecord['socialLinks'];
   status: string;
 }): CompanyRecord {
   return {
@@ -35,6 +37,8 @@ function toCompanyRecord(doc: {
     timezone: doc.timezone,
     currency: doc.currency,
     bookingSettings: doc.bookingSettings,
+    theme: doc.theme,
+    socialLinks: doc.socialLinks,
     status: doc.status,
   };
 }

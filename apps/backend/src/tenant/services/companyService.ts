@@ -22,28 +22,41 @@ export function createCompanyService(deps: CompanyServiceDeps) {
     },
 
     /**
-     * `bookingSettings` in the update is a PARTIAL object (e.g. just
-     * `{ minNoticeMinutes: 120 }`). Mongoose would replace the whole
-     * embedded subdocument if we passed that straight through, silently
-     * resetting the other booking-settings fields. So this merges it with
-     * the company's current settings first, and only then calls the
-     * repository with the full, correct object.
+     * `bookingSettings` and `socialLinks` in the update are PARTIAL
+     * objects (e.g. just `{ minNoticeMinutes: 120 }` or just
+     * `{ instagram: '...' }`). Mongoose would replace the whole embedded
+     * subdocument if we passed that straight through, silently resetting
+     * the other fields (e.g. clearing `facebook`/`tiktok`/`website` just
+     * because the caller only meant to update `instagram`). So both get
+     * merged with the company's current values first, and only then does
+     * the repository get called with the full, correct object.
      */
     async updateCompany(companyId: string, updates: CompanyProfileUpdate): Promise<CompanyRecord> {
-      const { bookingSettings: partialBookingSettings, ...restUpdates } = updates;
+      const {
+        bookingSettings: partialBookingSettings,
+        socialLinks: partialSocialLinks,
+        ...restUpdates
+      } = updates;
       let mergedBookingSettings: CompanyRecord['bookingSettings'] | undefined;
+      let mergedSocialLinks: CompanyRecord['socialLinks'] | undefined;
 
-      if (partialBookingSettings) {
+      if (partialBookingSettings || partialSocialLinks) {
         const current = await companyRepo.findById(companyId);
         if (!current) {
           throw new NotFoundError('Company not found.');
         }
-        mergedBookingSettings = { ...current.bookingSettings, ...partialBookingSettings };
+        if (partialBookingSettings) {
+          mergedBookingSettings = { ...current.bookingSettings, ...partialBookingSettings };
+        }
+        if (partialSocialLinks) {
+          mergedSocialLinks = { ...current.socialLinks, ...partialSocialLinks };
+        }
       }
 
       const updated = await companyRepo.updateById(companyId, {
         ...restUpdates,
         ...(mergedBookingSettings ? { bookingSettings: mergedBookingSettings } : {}),
+        ...(mergedSocialLinks ? { socialLinks: mergedSocialLinks } : {}),
       });
 
       if (!updated) {

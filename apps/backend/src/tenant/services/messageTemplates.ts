@@ -15,6 +15,27 @@ export function bookingConfirmationMessage(input: {
   return `Your ${input.serviceName} appointment at ${input.companyName} is confirmed for ${when}.`;
 }
 
+/**
+ * Public-booking variant of bookingConfirmationMessage — same base
+ * wording (composed from it, not duplicated), plus the customer's
+ * self-service management link. Extracted from publicController.ts,
+ * where it used to be built inline with a raw UTC ISO timestamp instead
+ * of the company's local time — closing HANDOFF_2.md §4 item 5, and
+ * fixing that inconsistency with the tenant-flow message convention
+ * along the way (customers should see local time, matching every other
+ * SMS this file sends, not a raw UTC ISO string).
+ */
+export function publicBookingConfirmationMessage(input: {
+  companyName: string;
+  serviceName: string;
+  startAt: Date;
+  timezone: string;
+  managementUrl: string;
+}): string {
+  const base = bookingConfirmationMessage(input);
+  return `${base} Manage it here: ${input.managementUrl}`;
+}
+
 export function cancellationMessage(input: {
   companyName: string;
   serviceName: string;

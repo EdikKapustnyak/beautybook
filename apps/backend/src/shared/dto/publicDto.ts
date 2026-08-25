@@ -16,6 +16,16 @@
 // tenant/models/*.ts — a real Company/Service/Employee document (or a
 // .lean() plain object) satisfies these structurally without any cast.
 
+// Structurally mirrors tenant/models/company.model.ts's SocialLinks —
+// duplicated rather than imported, keeping this file framework/model-free
+// per its header comment (zero compile-time dependency on tenant/models).
+export interface PublicSocialLinks {
+  instagram?: string;
+  facebook?: string;
+  tiktok?: string;
+  website?: string;
+}
+
 export interface PublicCompanyDto {
   id: string;
   name: string;
@@ -26,6 +36,8 @@ export interface PublicCompanyDto {
   timezone: string;
   currency: string;
   bookingSettings: unknown;
+  theme: string;
+  socialLinks: PublicSocialLinks;
 }
 
 export interface CompanySourceForPublicDto {
@@ -38,6 +50,8 @@ export interface CompanySourceForPublicDto {
   timezone: string;
   currency: string;
   bookingSettings?: unknown;
+  theme: string;
+  socialLinks?: PublicSocialLinks;
 }
 
 export function toPublicCompanyDto(company: CompanySourceForPublicDto): PublicCompanyDto {
@@ -51,6 +65,8 @@ export function toPublicCompanyDto(company: CompanySourceForPublicDto): PublicCo
     timezone: company.timezone,
     currency: company.currency,
     bookingSettings: company.bookingSettings ?? null,
+    theme: company.theme,
+    socialLinks: company.socialLinks ?? {},
   };
   // Deliberately NOT included: subscriptionId, status, createdAt, updatedAt,
   // or any other platform-internal field. Adding a field here later must be
@@ -119,4 +135,38 @@ export function toPublicEmployeeDto(employee: EmployeeSourceForPublicDto): Publi
   // workingHours is only ever exposed indirectly, through the availability
   // endpoint's already-computed slots — never as a raw weekly template a
   // scraper could diff against real bookings to infer schedules.
+}
+
+export interface PublicPortfolioImageDto {
+  id: string;
+  url: string;
+  order: number;
+}
+
+export interface PortfolioImageSourceForPublicDto {
+  _id: unknown;
+  url: string;
+  order: number;
+}
+
+/**
+ * Landing editor stage (dev-tasks.md §18/§19, HANDOFF_2.md §4 item 6) —
+ * portfolio images were already CRUD-manageable on the tenant side
+ * (portfolioController.ts) but had no public-facing DTO/endpoint yet.
+ * Deliberately excluded: storageKey (internal object-storage path —
+ * never exposed, security-measures.md §27 path-traversal reasoning
+ * applies to not leaking storage layout, not just to accepting input),
+ * mimeType, sizeBytes, companyId, active (the controller is responsible
+ * for only ever passing already-filtered active images in, same
+ * reasoning as toPublicServiceDto's `active` exclusion above),
+ * createdAt/updatedAt.
+ */
+export function toPublicPortfolioImageDto(
+  image: PortfolioImageSourceForPublicDto,
+): PublicPortfolioImageDto {
+  return {
+    id: String(image._id),
+    url: image.url,
+    order: image.order,
+  };
 }

@@ -4,6 +4,7 @@ import {
   bookingConfirmationMessage,
   cancellationMessage,
   formatAppointmentTime,
+  publicBookingConfirmationMessage,
   reminderMessage,
   rescheduleMessage,
 } from '../messageTemplates.js';
@@ -49,5 +50,30 @@ describe('message templates', () => {
     const message = reminderMessage({ ...baseInput, hoursBefore: 24 });
     expect(message).toMatch(/Reminder/i);
     expect(message).toContain('Manicure');
+  });
+});
+
+describe('publicBookingConfirmationMessage — HANDOFF_2.md §4 item 5', () => {
+  const managementUrl = 'https://beautybook.no/glow-studio/manage-booking/tok_abc123';
+
+  it('contains the exact same base wording as bookingConfirmationMessage (composed, not duplicated)', () => {
+    const base = bookingConfirmationMessage(baseInput);
+    const withLink = publicBookingConfirmationMessage({ ...baseInput, managementUrl });
+    expect(withLink.startsWith(base)).toBe(true);
+  });
+
+  it('appends the management link', () => {
+    const message = publicBookingConfirmationMessage({ ...baseInput, managementUrl });
+    expect(message).toContain(managementUrl);
+  });
+
+  it('formats the appointment time in the company timezone, not a raw UTC ISO string', () => {
+    // Regression check for the exact bug this extraction fixed: the
+    // confirmation SMS the public booking flow sends used to be built
+    // inline with `booking.startAt.toISOString()` (raw UTC) instead of
+    // going through formatAppointmentTime like every other message here.
+    const message = publicBookingConfirmationMessage({ ...baseInput, managementUrl });
+    expect(message).toContain('10:00'); // Europe/Oslo local time, matching baseInput
+    expect(message).not.toContain(baseInput.startAt.toISOString());
   });
 });

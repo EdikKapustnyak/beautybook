@@ -79,4 +79,22 @@ describe('companyService.updateCompany', () => {
     expect(result.bookingSettings.minNoticeMinutes).toBe(90);
     expect(result.bookingSettings.maxAdvanceBookingDays).toBe(30);
   });
+
+  it('updates theme directly (fixed enum, no merge needed)', async () => {
+    const result = await service.updateCompany(companyId, { theme: 'modern' });
+    expect(result.theme).toBe('modern');
+  });
+
+  it('merges a partial socialLinks update instead of replacing the whole object', async () => {
+    await service.updateCompany(companyId, {
+      socialLinks: { instagram: 'https://instagram.com/glowstudio' },
+    });
+    const result = await service.updateCompany(companyId, {
+      socialLinks: { facebook: 'https://facebook.com/glowstudio' },
+    });
+
+    // Untouched field from the first call must survive the second's merge.
+    expect(result.socialLinks.instagram).toBe('https://instagram.com/glowstudio');
+    expect(result.socialLinks.facebook).toBe('https://facebook.com/glowstudio');
+  });
 });

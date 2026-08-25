@@ -88,4 +88,35 @@ describe('updateCompanySchema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it('accepts a valid theme value', () => {
+    const result = updateCompanySchema.safeParse({ theme: 'modern' });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a theme value outside the fixed enum (no free-form theme/CSS)', () => {
+    const result = updateCompanySchema.safeParse({ theme: 'custom-css-injection' });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a partial socialLinks update', () => {
+    const result = updateCompanySchema.safeParse({
+      socialLinks: { instagram: 'https://instagram.com/glowstudio' },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a javascript: URL inside socialLinks (same XSS defense as logo/coverImage)', () => {
+    const result = updateCompanySchema.safeParse({
+      socialLinks: { website: 'javascript:alert(document.cookie)' },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an unknown key inside socialLinks (fixed platform allowlist, not free-form)', () => {
+    const result = updateCompanySchema.safeParse({
+      socialLinks: { twitter: 'https://twitter.com/glowstudio' },
+    });
+    expect(result.success).toBe(false);
+  });
 });
