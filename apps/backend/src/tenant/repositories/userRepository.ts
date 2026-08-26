@@ -44,6 +44,19 @@ export const userRepository = {
   },
 
   /**
+   * Used by subscriptionService.ts to find who to notify about billing
+   * events (e.g. a failed payment) — the owner, never an arbitrary
+   * team member. Every company has exactly one owner
+   * (authService.registerCompanyAndOwner creates it, and nothing in this
+   * codebase currently allows demoting the sole remaining owner —
+   * teamController.ts's owner-protection rules), so `findOne` rather
+   * than `find` is intentional, not a shortcut.
+   */
+  async findOwnerInCompany(companyId: string | Types.ObjectId): Promise<TenantUserDocument | null> {
+    return TenantUserModel.findOne(withTenantScope(String(companyId), { role: 'owner' })).exec();
+  },
+
+  /**
    * Paginated variant of listByCompany — the team-management endpoint
    * (tenant/controllers/teamController.ts) uses this one, not the
    * unbounded version above, per dev-tasks.md §31 ("Paginate all large

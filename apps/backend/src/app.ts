@@ -7,17 +7,30 @@ import { adminCorsConfig } from './admin/config.js';
 import { adminRouter } from './admin/router.js';
 import { isAppError } from './shared/errors/AppError.js';
 import { tenantCorsConfig } from './tenant/config.js';
+import { stripeWebhook } from './tenant/controllers/stripeWebhookController.js';
 import { tenantRouter } from './tenant/router.js';
 
 export function createApp(): Express {
   const app = express();
 
-  // Security headers (Helmet) and a bounded JSON body size apply globally.
-  // CORS is deliberately NOT global — see beautybook-security-measures.md
-  // §21: the public/tenant surface and the platform-admin surface each get
-  // their own allowlist below, so the public frontend's origin is never
-  // implicitly trusted by admin endpoints, or vice versa.
+  // Security headers apply globally; the JSON body parser does NOT
+  // (see the Stripe webhook route immediately below) — see
+  // beautybook-security-measures.md §21 for the CORS-allowlist reasoning
+  // covered further down.
   app.use(helmet());
+
+  // Stripe webhook — MUST be registered BEFORE `express.json()` below.
+  // Signature verification (security-measures.md §20, "работает с raw
+  // body") needs the exact, unparsed request bytes; `express.json()`
+  // would have already consumed and replaced them with a parsed object
+  // by the time any route handler ran. `express.raw()` is scoped to
+  // ONLY this one path — every other route still gets normal JSON
+  // parsing via the global middleware right after. No CORS wrapper
+  // either: this is a server-to-server callback from Stripe, never a
+  // browser request, so it isn't part of either the tenant or
+  // platform-admin CORS-allowlisted surface below.
+  app.post('/webhooks/stripe', express.raw({ type: 'application/json' }), stripeWebhook);
+
   app.use(express.json({ limit: '1mb' }));
   // Refresh tokens live only in httpOnly cookies — cookie-parser is what
   // makes req.cookies available to the auth controllers. It never touches

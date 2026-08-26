@@ -12,6 +12,7 @@ import { employeeRouter } from './routes/employeeRoutes.js';
 import { portfolioRouter } from './routes/portfolioRoutes.js';
 import { publicRouter } from './routes/publicRoutes.js';
 import { serviceRouter } from './routes/serviceRoutes.js';
+import { subscriptionRouter } from './routes/subscriptionRoutes.js';
 import { teamRouter } from './routes/teamRoutes.js';
 
 export const tenantRouter: Router = Router();
@@ -31,6 +32,10 @@ tenantRouter.use('/portfolio', portfolioRouter);
 // separate from '/employees' (the Employee roster model) — see the
 // "Employee vs. TenantUser" distinction in README.md's Stage 5/7 section.
 tenantRouter.use('/team', teamRouter);
+// Stripe Checkout session creation + subscription status — see
+// subscriptionController.ts. The webhook that actually confirms payment
+// is NOT here; see app.ts for why.
+tenantRouter.use('/subscription', subscriptionRouter);
 // Public, unauthenticated surface (technical-spec.md §7) — landing page,
 // services/employees/availability, phone verification, and the public
 // booking flow. Mounted here (not as a separate app.ts entry) so it

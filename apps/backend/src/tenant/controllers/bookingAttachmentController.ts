@@ -1,14 +1,21 @@
 import { isValidObjectId } from 'mongoose';
 
-import { NotFoundError, UnauthorizedError, ValidationError } from '../../shared/errors/AppError.js';
+import {
+  ForbiddenError,
+  NotFoundError,
+  UnauthorizedError,
+  ValidationError,
+} from '../../shared/errors/AppError.js';
 import { asyncHandler } from '../../shared/http/asyncHandler.js';
 import { requireParam } from '../../shared/http/requireParam.js';
 import { bookingRepository } from '../repositories/bookingRepository.js';
+import { employeeRepository } from '../repositories/employeeRepository.js';
 import { bookingAttachmentService } from '../services/bookingAttachmentService.instance.js';
 
-function requireAuth(tenantAuth: { userId: string; companyId: string } | undefined): {
+function requireAuth(tenantAuth: { userId: string; companyId: string; role: string } | undefined): {
   userId: string;
   companyId: string;
+  role: string;
 } {
   if (!tenantAuth) {
     throw new UnauthorizedError('Authentication is required.');
@@ -16,13 +23,50 @@ function requireAuth(tenantAuth: { userId: string; companyId: string } | undefin
   return tenantAuth;
 }
 
-async function requireBookingInCompany(bookingId: string, companyId: string): Promise<void> {
+/**
+ * Returns the booking so callers can check `employeeId` against the
+ * caller — throws NotFoundError if it doesn't exist in this company
+ * (tenant-scoped, same anti-enumeration shape as every other
+ * `requireXInCompany` helper in this codebase).
+ */
+async function requireBookingInCompany(
+  bookingId: string,
+  companyId: string,
+): Promise<{ employeeId: unknown }> {
   if (!isValidObjectId(bookingId)) {
     throw new ValidationError('Invalid booking id.');
   }
   const booking = await bookingRepository.findByIdInCompany(bookingId, companyId);
   if (!booking) {
     throw new NotFoundError('Booking not found.');
+  }
+  return booking;
+}
+
+/**
+ * dev-tasks.md §14: "Display only to authorized master." Owner/admin/
+ * manager can view any booking's attachments (matches
+ * canManageAttachments' role set on the write side below); an
+ * 'employee'-role caller may only view attachments for a booking
+ * assigned to THEM — resolved via Employee.userId (employee.model.ts's
+ * optional link back to the login account), never trusted from the
+ * request. A caller with no linked Employee entry at all (e.g. an
+ * owner/admin login not on the bookable roster) is treated the same as
+ * a non-matching employee: forbidden.
+ */
+async function requireAttachmentViewAccess(
+  booking: { employeeId: unknown },
+  tenantAuth: { userId: string; companyId: string; role: string },
+): Promise<void> {
+  if (['owner', 'admin', 'manager'].includes(tenantAuth.role)) {
+    return;
+  }
+  const employee = await employeeRepository.findByUserIdInCompany(
+    tenantAuth.userId,
+    tenantAuth.companyId,
+  );
+  if (!employee || String(employee._id) !== String(booking.employeeId)) {
+    throw new ForbiddenError('You do not have access to this booking.');
   }
 }
 
@@ -57,11 +101,15 @@ export const uploadBookingAttachment = asyncHandler(async (req, res) => {
 });
 
 export const listBookingAttachments = asyncHandler(async (req, res) => {
-  const { companyId } = requireAuth(req.tenantAuth);
+  const tenantAuth = requireAuth(req.tenantAuth);
   const bookingId = requireParam(req.params.bookingId, 'bookingId');
-  await requireBookingInCompany(bookingId, companyId);
+  const booking = await requireBookingInCompany(bookingId, tenantAuth.companyId);
+  await requireAttachmentViewAccess(booking, tenantAuth);
 
-  const attachments = await bookingAttachmentService.listForBooking(companyId, bookingId);
+  const attachments = await bookingAttachmentService.listForBooking(
+    tenantAuth.companyId,
+    bookingId,
+  );
   res.status(200).json({
     success: true,
     data: {
@@ -83,17 +131,18 @@ export const listBookingAttachments = asyncHandler(async (req, res) => {
  * security-measures.md §11 "access только через authorized endpoint".
  */
 export const getBookingAttachmentContent = asyncHandler(async (req, res) => {
-  const { companyId } = requireAuth(req.tenantAuth);
+  const tenantAuth = requireAuth(req.tenantAuth);
   const bookingId = requireParam(req.params.bookingId, 'bookingId');
   const attachmentId = requireParam(req.params.attachmentId, 'attachmentId');
-  await requireBookingInCompany(bookingId, companyId);
+  const booking = await requireBookingInCompany(bookingId, tenantAuth.companyId);
+  await requireAttachmentViewAccess(booking, tenantAuth);
 
   if (!isValidObjectId(attachmentId)) {
     throw new ValidationError('Invalid attachment id.');
   }
 
   const { buffer, mimeType } = await bookingAttachmentService.getAttachmentContent(
-    companyId,
+    tenantAuth.companyId,
     attachmentId,
   );
 

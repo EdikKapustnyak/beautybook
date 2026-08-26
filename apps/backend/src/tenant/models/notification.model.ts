@@ -8,6 +8,7 @@ export const NOTIFICATION_TYPES = [
   'cancellation',
   'reschedule',
   'otp',
+  'subscription_payment_failed',
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 

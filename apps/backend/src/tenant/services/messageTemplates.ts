@@ -66,3 +66,18 @@ export function reminderMessage(input: {
   const when = formatAppointmentTime(input.startAt, input.timezone);
   return `Reminder: your ${input.serviceName} appointment at ${input.companyName} is on ${when}.`;
 }
+
+/**
+ * Sent to the company OWNER (not a customer) when a Stripe invoice
+ * payment fails — subscriptionService.ts's `invoice.payment_failed`
+ * webhook handler. dev-tasks.md §16/project-overview.md §12 describe
+ * owner-facing notifications as an "email provider" concern, but this
+ * codebase has never wired up a real email provider (SMS/Twilio only —
+ * see shared/sms/smsProvider.ts) — sent over the existing SMS pipeline
+ * as the pragmatic choice rather than adding a whole new provider
+ * integration for one message. Revisit once/if a real transactional
+ * email provider is added.
+ */
+export function subscriptionPaymentFailedMessage(input: { companyName: string }): string {
+  return `Hi, a recent payment for your ${input.companyName} BeautyBook subscription failed. Please update your payment method to avoid service interruption.`;
+}

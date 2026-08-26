@@ -39,6 +39,23 @@ export const employeeRepository = {
     return EmployeeModel.findOne(withTenantScope(String(companyId), { _id: employeeId })).exec();
   },
 
+  /**
+   * Resolves the Employee roster entry linked to a TenantUser login
+   * account, if any — used by bookingAttachmentController.ts to decide
+   * whether a caller with the 'employee' role may view a specific
+   * booking's attachments (only if it's THEIR booking; dev-tasks.md §14
+   * "Display only to authorized master"). Returns null for a caller with
+   * no linked Employee entry (e.g. an admin/owner login that was never
+   * added to the bookable staff roster) — never throws, since "no linked
+   * employee" is a normal, valid state to check against, not an error.
+   */
+  async findByUserIdInCompany(
+    userId: string,
+    companyId: string | Types.ObjectId,
+  ): Promise<EmployeeDocument | null> {
+    return EmployeeModel.findOne(withTenantScope(String(companyId), { userId })).exec();
+  },
+
   async listInCompany(
     companyId: string | Types.ObjectId,
     options: ListEmployeesOptions,

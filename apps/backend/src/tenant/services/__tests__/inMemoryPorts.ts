@@ -1,5 +1,17 @@
 import { randomUUID } from 'node:crypto';
 
+import type {
+  StripeCheckoutSessionInput,
+  StripeGatewayPort,
+  StripeWebhookEvent,
+} from '../../../shared/payments/stripeGateway.js';
+import type {
+  PlanConfigRecord,
+  PlanConfigRepositoryPort,
+  StripeEventLedgerPort,
+  SubscriptionRecord,
+  SubscriptionRepositoryPort,
+} from '../../../shared/billing/types.js';
 import { createTokenVersionRevocationStore } from '../../../shared/security/tokenVersionRevocation.js';
 import type {
   CompanyRecord,
@@ -11,6 +23,7 @@ import type {
   UserRecord,
   UserRepositoryPort,
 } from '../../repositories/types.js';
+import type { SubscriptionNotifierPort } from '../subscriptionNotifier.js';
 
 const DEFAULT_BOOKING_SETTINGS: CompanyRecord['bookingSettings'] = {
   allowOnlineCancel: true,
@@ -162,4 +175,173 @@ export function createInMemoryTokenVersionRevocationStore() {
     },
   });
   return { ...store, data };
+}
+
+export function createInMemorySubscriptionRepo(): SubscriptionRepositoryPort {
+  const byCompanyId = new Map<string, SubscriptionRecord>();
+  return {
+    async findByCompanyId(companyId) {
+      return byCompanyId.get(companyId) ?? null;
+    },
+    async findByStripeCustomerId(stripeCustomerId) {
+      return [...byCompanyId.values()].find((s) => s.stripeCustomerId === stripeCustomerId) ?? null;
+    },
+    async create(data) {
+      const record: SubscriptionRecord = {
+        id: randomUUID(),
+        status: 'incomplete',
+        cancelAtPeriodEnd: false,
+        grantedByAdmin: false,
+        ...data,
+      };
+      byCompanyId.set(data.companyId, record);
+      return record;
+    },
+    async updateByCompanyId(companyId, updates) {
+      const existing = byCompanyId.get(companyId);
+      if (!existing) return null;
+      const updated = { ...existing, ...updates };
+      byCompanyId.set(companyId, updated);
+      return updated;
+    },
+    async updateByStripeCustomerId(stripeCustomerId, updates) {
+      const existing = [...byCompanyId.values()].find(
+        (s) => s.stripeCustomerId === stripeCustomerId,
+      );
+      if (!existing) return null;
+      const updated = { ...existing, ...updates };
+      byCompanyId.set(existing.companyId, updated);
+      return updated;
+    },
+    async listByStatus(status) {
+      return [...byCompanyId.values()].filter((s) => s.status === status);
+    },
+    async listAll(options) {
+      const all = [...byCompanyId.values()];
+      const start = (options.page - 1) * options.limit;
+      return { items: all.slice(start, start + options.limit), total: all.length };
+    },
+  };
+}
+
+/** Same reserve-before-create atomicity contract as the real Mongo unique-index-backed ledger. */
+export function createInMemoryStripeEventLedger(): StripeEventLedgerPort {
+  const seen = new Set<string>();
+  return {
+    async recordIfNew(stripeEventId) {
+      if (seen.has(stripeEventId)) return false;
+      seen.add(stripeEventId);
+      return true;
+    },
+  };
+}
+
+export function createInMemoryStripeGateway(): StripeGatewayPort & {
+  createdCustomers: { companyId: string; email: string; name: string }[];
+  createdCheckoutSessions: StripeCheckoutSessionInput[];
+  createdPortalSessions: { stripeCustomerId: string; returnUrl: string }[];
+  createdCoupons: number[];
+  createdPromotionCodes: { code: string; percentOff: number }[];
+  nextConstructedEvent: StripeWebhookEvent | Error | null;
+} {
+  const customerIdByCompanyId = new Map<string, string>();
+  const createdCustomers: { companyId: string; email: string; name: string }[] = [];
+  const createdCheckoutSessions: StripeCheckoutSessionInput[] = [];
+  const createdPortalSessions: { stripeCustomerId: string; returnUrl: string }[] = [];
+  const createdCoupons: number[] = [];
+  const createdPromotionCodes: { code: string; percentOff: number }[] = [];
+  let nextConstructedEvent: StripeWebhookEvent | Error | null = null;
+
+  return {
+    createdCustomers,
+    createdCheckoutSessions,
+    createdPortalSessions,
+    createdCoupons,
+    createdPromotionCodes,
+    get nextConstructedEvent() {
+      return nextConstructedEvent;
+    },
+    set nextConstructedEvent(value) {
+      nextConstructedEvent = value;
+    },
+    async findOrCreateCustomer(input) {
+      const existing = customerIdByCompanyId.get(input.companyId);
+      if (existing) return { stripeCustomerId: existing };
+      const stripeCustomerId = `cus_${randomUUID()}`;
+      customerIdByCompanyId.set(input.companyId, stripeCustomerId);
+      createdCustomers.push(input);
+      return { stripeCustomerId };
+    },
+    async createCheckoutSession(input) {
+      createdCheckoutSessions.push(input);
+      return { url: `https://checkout.stripe.com/test/${randomUUID()}` };
+    },
+    async createBillingPortalSession(input) {
+      createdPortalSessions.push(input);
+      return { url: `https://billing.stripe.com/test/${randomUUID()}` };
+    },
+    async findOrCreatePercentOffCoupon(percent) {
+      createdCoupons.push(percent);
+      return { stripeCouponId: `pct_off_${percent}` };
+    },
+    async createPromotionCode({ code, percentOff }) {
+      createdPromotionCodes.push({ code, percentOff });
+      return {
+        stripeCouponId: `coupon_${randomUUID()}`,
+        stripePromotionCodeId: `promo_${randomUUID()}`,
+      };
+    },
+    constructWebhookEvent() {
+      if (nextConstructedEvent instanceof Error) {
+        throw nextConstructedEvent;
+      }
+      if (!nextConstructedEvent) {
+        throw new Error('Test setup error: nextConstructedEvent was not configured.');
+      }
+      return nextConstructedEvent;
+    },
+  };
+}
+
+export function createInMemoryPlanConfigRepo(): PlanConfigRepositoryPort {
+  const byPlan = new Map<string, PlanConfigRecord>();
+  return {
+    async findByPlan(plan) {
+      return byPlan.get(plan) ?? null;
+    },
+    async listAll() {
+      return [...byPlan.values()];
+    },
+    async findOrSeedByPlan(plan, seedDefaults) {
+      const existing = byPlan.get(plan);
+      if (existing) return existing;
+      const record: PlanConfigRecord = {
+        plan,
+        discountPercent: 0,
+        active: true,
+        ...seedDefaults,
+      };
+      byPlan.set(plan, record);
+      return record;
+    },
+    async updateByPlan(plan, updates) {
+      const existing = byPlan.get(plan);
+      if (!existing) return null;
+      const updated = { ...existing, ...updates };
+      byPlan.set(plan, updated);
+      return updated;
+    },
+  };
+}
+
+export function createInMemorySubscriptionNotifier(): SubscriptionNotifierPort & {
+  notifiedPaymentFailures: { companyId: string; companyName: string }[];
+} {
+  const notifiedPaymentFailures: { companyId: string; companyName: string }[] = [];
+  return {
+    notifiedPaymentFailures,
+    async notifyOwnerPaymentFailed(input) {
+      notifiedPaymentFailures.push(input);
+    },
+  };
 }

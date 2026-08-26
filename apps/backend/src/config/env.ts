@@ -69,6 +69,23 @@ const envSchema = z.object({
   // Billing
   STRIPE_SECRET_KEY: z.string().min(1, 'STRIPE_SECRET_KEY is required'),
   STRIPE_WEBHOOK_SECRET: z.string().min(1, 'STRIPE_WEBHOOK_SECRET is required'),
+  // Stripe Price IDs (created in the Stripe Dashboard, NOT computed —
+  // project-overview.md §3: "Цены являются бизнес-решением и не
+  // считаются фиксированными требованиями архитектуры"). One env var per
+  // SUBSCRIPTION_PLAN in subscription.model.ts; keep both lists in sync.
+  STRIPE_PRICE_ID_STARTER: z.string().min(1, 'STRIPE_PRICE_ID_STARTER is required'),
+  STRIPE_PRICE_ID_BUSINESS: z.string().min(1, 'STRIPE_PRICE_ID_BUSINESS is required'),
+  // Where Stripe Checkout redirects after payment — technical-spec.md §14.
+  // No trailing slash. `{CHECKOUT_SESSION_ID}` is a literal Stripe
+  // template placeholder, not interpolated by this codebase.
+  STRIPE_CHECKOUT_SUCCESS_URL: z
+    .string()
+    .url()
+    .default('https://beautybook.no/dashboard/billing?checkout=success'),
+  STRIPE_CHECKOUT_CANCEL_URL: z
+    .string()
+    .url()
+    .default('https://beautybook.no/dashboard/billing?checkout=cancelled'),
 
   // SMS provider — 'console' (default, logs to stdout in development only,
   // for local dev/testing without a real Twilio account) or 'twilio'

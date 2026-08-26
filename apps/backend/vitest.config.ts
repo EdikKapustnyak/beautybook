@@ -19,6 +19,8 @@ export default defineConfig({
       ADMIN_JWT_REFRESH_SECRET: 'test-admin-refresh-secret-not-for-real-00',
       STRIPE_SECRET_KEY: 'sk_test_dummy',
       STRIPE_WEBHOOK_SECRET: 'whsec_dummy',
+      STRIPE_PRICE_ID_STARTER: 'price_test_starter_dummy',
+      STRIPE_PRICE_ID_BUSINESS: 'price_test_business_dummy',
       SMS_PROVIDER: 'console',
       S3_BUCKET: 'beautybook-test',
       S3_REGION: 'us-east-1',
