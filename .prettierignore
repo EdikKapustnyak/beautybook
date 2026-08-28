@@ -4,3 +4,7 @@ dist
 coverage
 package-lock.json
 *.min.js
+# Next.js auto-generates and regenerates this file; it explicitly says
+# "This file should not be edited" at the top. Formatting it manually
+# just creates needless diff noise against the next `next dev`/`build`.
+next-env.d.ts

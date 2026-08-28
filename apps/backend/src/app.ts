@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import { adminCorsConfig } from './admin/config.js';
 import { adminRouter } from './admin/router.js';
 import { isAppError } from './shared/errors/AppError.js';
+import { createRateLimiter } from './shared/http/rateLimit.js';
 import { tenantCorsConfig } from './tenant/config.js';
 import { stripeWebhook } from './tenant/controllers/stripeWebhookController.js';
 import { tenantRouter } from './tenant/router.js';
@@ -39,6 +40,33 @@ export function createApp(): Express {
   app.use(cookieParser());
   app.disable('x-powered-by');
 
+  // dev-tasks.md §23 "Global API limiter" — a broad, generously-bounded
+  // backstop, distinct from (and layered on top of, never replacing) the
+  // tighter endpoint-specific limiters already on login/register/OTP/
+  // booking/password-reset. Those stay because they encode a much
+  // stricter, endpoint-appropriate policy (e.g. 5 login attempts/15min);
+  // this one exists purely to bound overall request volume from a single
+  // IP against every OTHER route that has no dedicated limiter of its
+  // own (list/search/read endpoints, etc.) — the exact gap the full
+  // security audit (dev-tasks.md §30) flagged. Deliberately NOT applied
+  // to /health, /ready, or /webhooks/stripe: health checks shouldn't be
+  // throttled, and Stripe's webhook senders can legitimately burst from
+  // a shared pool of IPs — that endpoint already has its own defense
+  // (signature verification), not an IP-count-based one.
+  const globalTenantApiLimiter = createRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: 600,
+    message: 'Too many requests. Please try again later.',
+  });
+  const globalAdminApiLimiter = createRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    // Tighter than the tenant surface — same "admin accounts are
+    // high-value targets, smaller trusted user base" reasoning already
+    // applied to admin/routes/adminAuthRoutes.ts's own loginLimiter.
+    max: 300,
+    message: 'Too many requests. Please try again later.',
+  });
+
   // Health/readiness endpoints — see project overview §32 Observability.
   // These deliberately return no internal details and need no CORS
   // allowlist (no credentials, not browser-driven).
@@ -57,6 +85,7 @@ export function createApp(): Express {
   app.use(
     '/api/tenant',
     cors({ origin: tenantCorsConfig.allowedOrigins, credentials: true }),
+    globalTenantApiLimiter,
     tenantRouter,
   );
 
@@ -68,6 +97,7 @@ export function createApp(): Express {
   app.use(
     '/api/admin',
     cors({ origin: adminCorsConfig.allowedOrigins, credentials: true }),
+    globalAdminApiLimiter,
     adminRouter,
   );
 

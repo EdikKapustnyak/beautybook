@@ -10,6 +10,9 @@ import { metricsRouter } from './routes/metricsRoutes.js';
 import { planConfigRouter } from './routes/planConfigRoutes.js';
 import { platformSettingsRouter } from './routes/platformSettingsRoutes.js';
 import { subscriptionsOverviewRouter } from './routes/subscriptionsOverviewRoutes.js';
+import { supportTicketRouter } from './routes/supportTicketRoutes.js';
+import { systemStatusRouter } from './routes/systemStatusRoutes.js';
+import { usageRouter } from './routes/usageRoutes.js';
 import { userAdminRouter } from './routes/userAdminRoutes.js';
 
 export const adminRouter: Router = Router();
@@ -40,6 +43,14 @@ adminRouter.use('/audit-logs', auditLogRouter);
 // Platform name/support email/default currency/trial length — see
 // admin/controllers/platformSettingsController.ts.
 adminRouter.use('/settings', platformSettingsRouter);
+// Bookings/SMS/storage per company — see admin/controllers/usageController.ts.
+adminRouter.use('/usage', usageRouter);
+// Support ticket triage — see admin/controllers/supportTicketController.ts.
+adminRouter.use('/support-tickets', supportTicketRouter);
+// Real MongoDB/Redis health + integration config — see
+// admin/controllers/systemStatusController.ts. Distinct from the
+// unauthenticated `/status` diagnostic below (config wiring only).
+adminRouter.use('/system', systemStatusRouter);
 
 // Proves, at runtime, that this surface is wired to the admin config
 // (by cookie name only — never a secret value). Feature routes (platform

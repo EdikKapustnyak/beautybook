@@ -51,9 +51,7 @@ export const getAvailability = asyncHandler(async (req, res) => {
   }
 
   // Employee/service compatibility — technical-spec.md §8 step 4.
-  const performsThisService = service.employeeIds.some(
-    (id) => String(id) === String(employee._id),
-  );
+  const performsThisService = service.employeeIds.some((id) => String(id) === String(employee._id));
   if (!performsThisService) {
     throw new ValidationError('This employee does not perform the requested service.');
   }
